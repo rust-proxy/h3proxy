@@ -5,13 +5,18 @@ edition = "2021"
 
 [dependencies]
 tokio = { version = "1.38", features = ["rt-multi-thread", "macros", "net", "io-util"] }
-quinn = "0.10"
-h3 = "0.0.3"
-h3-quinn = "0.0.4"
+quinn = "0.11"
+h3 = "0.0.8"
+h3-quinn = "0.0.10"
 bytes = "1.4"
-http = "0.2"
-hyper = { version = "0.14", features = ["client", "http1", "stream", "tcp"] }
+http = "1.0"
+http-body = "1.0"
+http-body-util = "0.1"
+tokio-stream = "0.1"
+rustls-pki-types = "1.0"
+hyper = { version = "1.0", features = ["http1", "client"] }
+hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
 anyhow = "1.0"
 tracing = "0.1"
 futures = "0.3"
-rustls = "0.21"
+rustls = { version = "0.23", features = ["ring"] }

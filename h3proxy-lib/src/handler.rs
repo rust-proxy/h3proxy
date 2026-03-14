@@ -3,15 +3,17 @@ use bytes::{Buf, Bytes};
 use h3_quinn::BidiStream;
 use h3::server::RequestStream;
 use http::{Request, Response};
-use hyper::body::HttpBody;
+use http_body_util::{BodyExt, StreamBody};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tracing::{error, info};
+use hyper_util::client::legacy::Client;
+use hyper_util::client::legacy::connect::HttpConnector;
 
 pub async fn handle_request(
     req: Request<()>,
     mut stream: RequestStream<BidiStream<Bytes>, Bytes>,
-    hyper_client: hyper::Client<hyper::client::HttpConnector>,
+    hyper_client: Client<HttpConnector, StreamBody<tokio_stream::wrappers::ReceiverStream<Result<hyper::body::Frame<Bytes>, anyhow::Error>>>>,
 ) -> Result<()> {
     let method = req.method().clone();
     let uri = req.uri().clone();
@@ -109,22 +111,23 @@ pub async fn handle_request(
         builder = builder.header(name.as_str(), value.as_bytes());
     }
 
-    let (mut sender, body) = hyper::Body::channel();
-    let hyper_req = builder.body(body)?;
+    let (tx_body, rx_body) = tokio::sync::mpsc::channel::<Result<hyper::body::Frame<Bytes>, anyhow::Error>>(10);
+    let stream_body = StreamBody::new(tokio_stream::wrappers::ReceiverStream::new(rx_body));
+    let hyper_req = builder.body(stream_body)?;
 
     let (mut tx, mut rx) = stream.split();
 
     tokio::spawn(async move {
         while let Ok(Some(mut chunk)) = rx.recv_data().await {
             let bytes = chunk.copy_to_bytes(chunk.remaining());
-            if let Err(e) = sender.send_data(bytes).await {
-                error!("failed to stream body to upstream: {:?}", e);
+            if let Err(_) = tx_body.send(Ok(hyper::body::Frame::data(bytes))).await {
+                error!("failed to stream body to upstream");
                 break;
             }
         }
     });
 
-    let resp = hyper_client.request(hyper_req).await?;
+    let mut resp = hyper_client.request(hyper_req).await?;
 
     let mut resp_builder = http::response::Builder::new();
     resp_builder = resp_builder.status(resp.status().as_u16());
@@ -134,10 +137,12 @@ pub async fn handle_request(
 
     tx.send_response(resp_builder.body(())?).await?;
     
-    let mut body_stream = resp.into_body();
-    while let Some(chunk_res) = body_stream.data().await {
-        let chunk = chunk_res?;
-        tx.send_data(chunk).await?;
+    while let Some(frame_res) = resp.body_mut().frame().await {
+        if let Ok(frame) = frame_res {
+            if let Some(chunk) = frame.data_ref() {
+                tx.send_data(chunk.clone()).await?;
+            }
+        }
     }
     tx.finish().await?;
 

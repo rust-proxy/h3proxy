@@ -26,15 +26,15 @@ async fn main() -> Result<()> {
     let cert_data = fs::read(&args.cert).with_context(|| format!("failed to read cert file: {}", args.cert))?;
     let key_data = fs::read(&args.key).with_context(|| format!("failed to read key file: {}", args.key))?;
 
-    let certs = rustls_pemfile::certs(&mut &*cert_data)
-        .context("failed to parse certs")?
-        .into_iter()
-        .map(rustls::Certificate)
-        .collect();
+    let certs: Vec<_> = rustls_pemfile::certs(&mut &*cert_data)
+        .collect::<Result<_, _>>()
+        .context("failed to parse certs")?;
 
-    let mut keys = rustls_pemfile::rsa_private_keys(&mut &*key_data)
-        .context("failed to parse key")?;
-    let priv_key = rustls::PrivateKey(keys.remove(0));
+    let mut keys: Vec<_> = rustls_pemfile::private_key(&mut &*key_data)
+        .context("failed to parse key")?
+        .into_iter()
+        .collect();
+    let priv_key = keys.remove(0);
 
     let config = ProxyConfig {
         listen_addr: args.listen,

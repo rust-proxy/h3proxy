@@ -27,12 +27,19 @@ async fn main() -> Result<()> {
     let cert_data = fs::read(&args.cert).with_context(|| format!("failed to read cert file: {}", args.cert))?;
     let key_data = fs::read(&args.key).with_context(|| format!("failed to read key file: {}", args.key))?;
 
-    let cert_chain = quinn::CertificateChain::from_pem(&cert_data)?;
-    let priv_key = quinn::PrivateKey::from_pem(&key_data)?;
+    let certs = rustls_pemfile::certs(&mut &*cert_data)
+        .context("failed to parse certs")?
+        .into_iter()
+        .map(rustls::Certificate)
+        .collect();
+
+    let mut keys = rustls_pemfile::rsa_private_keys(&mut &*key_data)
+        .context("failed to parse key")?;
+    let priv_key = rustls::PrivateKey(keys.remove(0));
 
     let config = ProxyConfig {
         listen_addr: args.listen,
-        cert_chain,
+        cert_chain: certs,
         priv_key,
     };
 

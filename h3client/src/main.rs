@@ -3,6 +3,8 @@ use quinn::Endpoint;
 use std::{fs, net::SocketAddr, sync::Arc};
 use tracing_subscriber;
 use http::Request;
+use h3_quinn::Connection;
+use bytes::Buf;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -18,19 +20,25 @@ async fn main() -> Result<()> {
     for c in certs {
         roots.add(&rustls::Certificate(c))?;
     }
-    let crypto = rustls::ClientConfig::builder()
+    let mut crypto = rustls::ClientConfig::builder()
         .with_safe_defaults()
         .with_root_certificates(roots)
         .with_no_client_auth();
-    let mut client_config = quinn::ClientConfig::new(Arc::new(crypto));
-    client_config.alpn_protocols = vec![b"h3".to_vec(), b"h3-29".to_vec()];
+    crypto.alpn_protocols = vec![b"h3".to_vec(), b"h3-29".to_vec()];
+
+    let client_config = quinn::ClientConfig::new(Arc::new(crypto));
     endpoint.set_default_client_config(client_config);
 
-    let conn = endpoint.connect(server_addr, "localhost")?.await?;
+    let quinn_conn = endpoint.connect(server_addr, "localhost")?.await?;
     println!("connected");
 
-    let (mut h3_conn, driver) = h3::client::new(conn).await?;
-    tokio::spawn(async move { let _ = driver.await; });
+    let h3_conn_wrapped = Connection::new(quinn_conn);
+    let (mut driver, mut send_request) = h3::client::new(h3_conn_wrapped).await?;
+    tokio::spawn(async move {
+        if let Err(e) = std::future::poll_fn(|cx| driver.poll_close(cx)).await {
+            eprintln!("driver err: {:?}", e);
+        }
+    });
 
     // Example: send CONNECT to create tunnel to example.com:443
     let req = Request::builder()
@@ -39,12 +47,13 @@ async fn main() -> Result<()> {
         .header("host", "example.com:443")
         .body(())?;
 
-    let (resp, mut recv_body) = h3_conn.send_request(req).await?;
+    let mut request_stream = send_request.send_request(req).await?;
+    let resp = request_stream.recv_response().await?;
     println!("resp status: {}", resp.status());
 
-    // If 200, you can start exchanging raw bytes on the stream; here we just print any returned data
-    while let Some(chunk) = recv_body.data().await? {
-        print!("{}", String::from_utf8_lossy(&chunk));
+    while let Some(chunk) = request_stream.recv_data().await? {
+        let bytes = chunk;
+        print!("{}", String::from_utf8_lossy(bytes.chunk()));
     }
 
     Ok(())

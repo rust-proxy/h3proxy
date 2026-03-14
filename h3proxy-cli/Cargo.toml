@@ -1,0 +1,13 @@
+[package]
+name = "h3proxy-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+h3proxy-lib = { path = "../h3proxy-lib" }
+tokio = { version = "1.38", features = ["rt-multi-thread", "macros"] }
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+clap = { version = "4.4", features = ["derive"] }
+quinn = "0.11"

@@ -1,5 +1,5 @@
 [package]
-name = "h3proxy"
+name = "h3proxy-lib"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,7 +9,7 @@ quinn = "0.11"
 h3 = { version = "0.6", features = ["server", "quic"] }
 bytes = "1.4"
 http = "0.2"
-hyper = { version = "0.14", features = ["client", "http1"] }
+hyper = { version = "0.14", features = ["client", "http1", "tcp"] }
 anyhow = "1.0"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["fmt"] }
+futures = "0.3"

@@ -1,2 +1,2 @@
 [workspace]
-members = ["h3proxy", "h3client"]
+members = ["h3proxy-lib", "h3proxy-cli", "h3client"]

@@ -4,7 +4,6 @@ use h3proxy_lib::config::ProxyConfig;
 use h3proxy_lib::server::ProxyServer;
 use std::fs;
 use std::net::SocketAddr;
-use tracing_subscriber;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

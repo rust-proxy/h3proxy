@@ -1,7 +1,6 @@
 use anyhow::Result;
 use quinn::Endpoint;
 use std::{fs, net::SocketAddr, sync::Arc};
-use tracing_subscriber;
 use http::Request;
 use h3_quinn::Connection;
 use bytes::Buf;

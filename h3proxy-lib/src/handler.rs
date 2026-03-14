@@ -39,7 +39,7 @@ pub async fn handle_request(
         let target = format!("{}:{}", host, port);
 
         match TcpStream::connect(target).await {
-            Ok(mut tcp) => {
+            Ok(tcp) => {
                 let resp = Response::builder().status(200).body(())?;
                 stream.send_response(resp).await?;
 

@@ -1,0 +1,2 @@
+[workspace]
+members = ["h3proxy", "h3client"]

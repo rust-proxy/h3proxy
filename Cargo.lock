@@ -404,26 +404,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "h3client"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytes",
- "h3",
- "h3-quinn",
- "http",
- "http-body",
- "http-body-util",
- "quinn",
- "rustls",
- "rustls-pemfile",
- "rustls-pki-types",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "h3proxy-cli"
 version = "0.1.0"
 dependencies = [

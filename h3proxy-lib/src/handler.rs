@@ -26,7 +26,7 @@ pub async fn handle_request(
 
         if authority.is_empty() {
             let resp = Response::builder().status(400).body(())?;
-            stream.send_response(resp).await?;
+            let _ = stream.send_response(resp).await?;
             return Ok(());
         }
 
@@ -80,13 +80,13 @@ pub async fn handle_request(
             Err(e) => {
                 error!("connect target err: {:?}", e);
                 let resp = Response::builder().status(502).body(())?;
-                stream.send_response(resp).await?;
+                let _ = stream.send_response(resp).await?;
             }
         }
         return Ok(());
     }
 
-    // Forward standard requests
+    // ========== STREAM-OPTIMIZED FORWARDING (NON-CONNECT) ==========
     let upstream = if uri.scheme().is_some() && uri.host().is_some() {
         uri
     } else {
@@ -109,22 +109,44 @@ pub async fn handle_request(
         }
     }
 
-    // Still reading body entirely to memory for now as an optimization phase.
-    let mut body = Vec::new();
-    while let Some(chunk) = stream.data().await.unwrap_or(None) {
-        body.extend_from_slice(&chunk?);
-    }
+    // 创建 hyper 请求体 channel 从而实现边读取 h3 stream 边向 hyper 输入数据
+    let (mut sender, body) = hyper::Body::channel();
+    let hyper_req = builder.body(body)?;
 
-    let hyper_req = builder.body(hyper::Body::from(body))?;
+    // 开启单独的协程，将 HTTP/3 客户端传来的 body 流式转发给 hyper 上游请求
+    let mut req_stream = stream.clone();
+    tokio::spawn(async move {
+        while let Some(chunk_res) = req_stream.data().await.unwrap_or(None) {
+            match chunk_res {
+                Ok(chunk) => {
+                    let bytes = Bytes::copy_from_slice(&chunk);
+                    if let Err(e) = sender.send_data(bytes).await {
+                        error!("failed to stream body to upstream: {:?}", e);
+                        break;
+                    }
+                }
+                Err(e) => {
+                    error!("error reading from h3 stream: {:?}", e);
+                    break;
+                }
+            }
+        }
+    });
+
+    // 向上游发起请求并等待响应头部
     let resp = hyper_client.request(hyper_req).await?;
 
+    // 构建回传客户端的 Response
     let mut resp_builder = http::response::Builder::new();
     resp_builder = resp_builder.status(resp.status().as_u16());
     for (name, value) in resp.headers().iter() {
         resp_builder = resp_builder.header(name.as_str(), value.as_bytes());
     }
 
+    // 返回响应头部给客户端
     let mut send = stream.send_response(resp_builder.body(())?).await?;
+    
+    // 流式读取上游 HTTP/1.1 返回的 body 并逐块写入到 HTTP/3 的下行流中
     let mut body_stream = resp.into_body();
     while let Some(chunk) = body_stream.data().await {
         let data = chunk?;

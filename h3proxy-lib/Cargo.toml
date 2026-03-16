@@ -3,6 +3,9 @@ name = "h3proxy-lib"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+cronet-backend = ["cronet-rs"]
+
 [dependencies]
 tokio = { version = "1.38", features = ["rt-multi-thread", "macros", "net", "io-util"] }
 quinn = "0.11"
@@ -20,6 +23,7 @@ anyhow = "1.0"
 tracing = "0.1"
 futures = "0.3"
 rustls = { version = "0.23", features = ["ring"] }
+cronet-rs = { git = "https://github.com/sleeyax/cronet-rs", optional = true }
 
 [dev-dependencies]
 rcgen = "0.12"

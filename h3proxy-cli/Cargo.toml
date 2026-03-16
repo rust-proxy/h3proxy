@@ -3,6 +3,9 @@ name = "h3proxy-cli"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+cronet-backend = ["h3proxy-lib/cronet-backend"]
+
 [dependencies]
 h3proxy-lib = { path = "../h3proxy-lib" }
 tokio = { version = "1.38", features = ["rt-multi-thread", "macros"] }

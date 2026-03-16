@@ -36,6 +36,9 @@ enum Commands {
 
         #[arg(short, long, default_value = "cert.pem")]
         cert: String,
+
+        #[arg(short, long, default_value = "quinn")]
+        backend: String,
     },
 }
 
@@ -68,20 +71,29 @@ async fn main() -> Result<()> {
             let server = ProxyServer::new(config);
             server.serve().await?;
         }
-        Commands::Client { proxy, target, cert } => {
+        Commands::Client { proxy, target, cert, backend } => {
             let cert_data = fs::read(&cert).with_context(|| format!("failed to read cert file: {}", cert))?;
             let certs: Vec<_> = rustls_pemfile::certs(&mut &*cert_data)
                 .collect::<Result<_, _>>()
                 .context("failed to parse certs")?;
 
-            let config = ClientConfig {
-                proxy_addr: proxy,
-                target_url: target,
-                root_certs: certs,
-            };
-
-            let client = ProxyClient::new(config);
-            client.run().await?;
+            if backend == "cronet" {
+                let config = h3proxy_lib::cronet_client::CronetClientConfig {
+                    proxy_addr: proxy,
+                    target_url: target,
+                    root_certs: certs,
+                };
+                let client = h3proxy_lib::cronet_client::CronetClient::new(config);
+                client.run().await?;
+            } else {
+                let config = ClientConfig {
+                    proxy_addr: proxy,
+                    target_url: target,
+                    root_certs: certs,
+                };
+                let client = ProxyClient::new(config);
+                client.run().await?;
+            }
         }
     }
 

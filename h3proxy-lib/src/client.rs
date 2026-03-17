@@ -23,7 +23,12 @@ impl ProxyClient {
     }
 
     pub async fn run(&self) -> Result<()> {
-        let mut endpoint = Endpoint::client("0.0.0.0:0".parse()?)?;
+        let bind_addr: SocketAddr = if self.config.proxy_addr.is_ipv4() {
+            "0.0.0.0:0".parse()?
+        } else {
+            "[::]:0".parse()?
+        };
+        let mut endpoint = Endpoint::client(bind_addr)?;
 
         let mut roots = rustls::RootCertStore::empty();
         for c in self.config.root_certs.clone() {

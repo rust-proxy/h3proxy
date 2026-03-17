@@ -22,6 +22,7 @@ fn generate_test_cert() -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'
 
 #[tokio::test]
 async fn test_proxy_server_and_client_connect() -> Result<()> {
+    let _ = tracing_subscriber::fmt::try_init();
     // 1. Generate test TLS certificates
     let (cert_chain, priv_key) = generate_test_cert()?;
 
@@ -31,28 +32,27 @@ async fn test_proxy_server_and_client_connect() -> Result<()> {
     
     tokio::spawn(async move {
         if let Ok((mut socket, _)) = target_listener.accept().await {
-            use tokio::io::{AsyncReadExt, AsyncWriteExt};
-            let mut buf = [0u8; 1024];
-            if let Ok(n) = socket.read(&mut buf).await {
-                // Echo what was received for simplicity
-                let _ = socket.write_all(&buf[..n]).await;
-            }
+            use tokio::io::AsyncWriteExt;
+            let _ = socket.write_all(b"hello").await;
+            let _ = socket.shutdown().await;
         }
     });
 
     // 3. Start the h3proxy Server on a random port
-    let proxy_addr: SocketAddr = "127.0.0.1:4433".parse()?; // Fixed port to simplify config
+    let bind_addr: SocketAddr = "127.0.0.1:0".parse()?; // Let OS pick port
 
     let server_config = ProxyConfig {
-        listen_addr: proxy_addr,
+        listen_addr: bind_addr,
         cert_chain: cert_chain.clone(),
         priv_key,
     };
     
     let server = ProxyServer::new(server_config);
+    let endpoint = server.bind()?;
+    let proxy_addr = endpoint.local_addr()?;
     
     tokio::spawn(async move {
-        let _ = server.serve().await;
+        let _ = server.serve_endpoint(endpoint).await;
     });
 
     // Give server a moment to bind

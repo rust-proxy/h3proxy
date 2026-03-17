@@ -27,3 +27,4 @@ cronet-rs = { git = "https://github.com/sleeyax/cronet-rs", optional = true }
 
 [dev-dependencies]
 rcgen = "0.12"
+tracing-subscriber = "0.3"

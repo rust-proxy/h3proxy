@@ -19,10 +19,15 @@ impl ProxyServer {
     }
 
     pub async fn serve(self) -> Result<()> {
+        let endpoint = self.bind()?;
+        self.serve_endpoint(endpoint).await
+    }
+    
+    pub fn bind(&self) -> Result<Endpoint> {
         let mut server_crypto = rustls::ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
             .with_safe_default_protocol_versions()?
             .with_no_client_auth()
-            .with_single_cert(self.config.cert_chain, self.config.priv_key)?;
+            .with_single_cert(self.config.cert_chain.clone(), self.config.priv_key.clone_key())?;
         server_crypto.alpn_protocols = vec![b"h3".to_vec(), b"h3-29".to_vec()];
 
         let mut server_config = quinn::ServerConfig::with_crypto(Arc::new(quinn::crypto::rustls::QuicServerConfig::try_from(server_crypto)?));
@@ -30,21 +35,25 @@ impl ProxyServer {
 
         let addr = self.config.listen_addr;
         let endpoint = Endpoint::server(server_config, addr)?;
-        info!(%addr, "h3 proxy listening");
+        Ok(endpoint)
+    }
+
+    pub async fn serve_endpoint(self, endpoint: Endpoint) -> Result<()> {
+        info!("h3 proxy listening");
 
         let hyper_client = Client::builder(TokioExecutor::new()).build_http();
 
         while let Some(connecting) = endpoint.accept().await {
-            let quinn_conn = match connecting.await {
-                Ok(c) => c,
-                Err(e) => {
-                    error!("accept conn err: {:?}", e);
-                    continue;
-                }
-            };
-
             let hyper_client = hyper_client.clone();
             tokio::spawn(async move {
+                let quinn_conn = match connecting.await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        error!("accept conn err: {:?}", e);
+                        return;
+                    }
+                };
+
                 info!(peer = %quinn_conn.remote_address(), "accepted connection");
                 let h3_conn = Connection::new(quinn_conn);
                 let mut h3_server = match h3::server::builder()
